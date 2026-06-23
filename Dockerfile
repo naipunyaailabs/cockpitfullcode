@@ -6,7 +6,6 @@ WORKDIR /app
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ ./backend/
-COPY p/ ./p/
 
 # Stage 2: Build frontend
 FROM node:20.19.0-bullseye AS frontend-builder
@@ -27,7 +26,6 @@ WORKDIR /app
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY --from=backend-builder /app/backend ./backend/
-COPY --from=backend-builder /app/p ./p/
 
 # Copy frontend build to nginx
 COPY --from=frontend-builder /app/dist /usr/share/nginx/html
@@ -39,4 +37,4 @@ COPY nginx/nginx.conf /etc/nginx/nginx.conf
 EXPOSE 80
 
 # Start both nginx and backend
-CMD /bin/bash -c "cd /app/backend && uvicorn main:app --host 127.0.0.1 --port 8005 &  && nginx -g 'daemon off;'"
+CMD ["/bin/bash", "-c", "cd /app/backend && uvicorn main:app --host 127.0.0.1 --port 8005 &  && nginx -g 'daemon off;'"]
