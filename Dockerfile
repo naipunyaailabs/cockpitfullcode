@@ -1,40 +1,34 @@
-# Multi-stage build: backend, frontend, and nginx in one container
+# Multi-stage: backend Python, frontend Node, final Nginx+backend
 
-# Stage 1: Build backend
-FROM python:3.11-slim AS backend-builder
-WORKDIR /app
-COPY backend/requirements.txt .
+FROM python:3.11-slim as backend
+WORKDIR /app/backend
+COPY ./backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY backend/ ./backend/
+COPY ./backend . 
 
-# Stage 2: Build frontend
-FROM node:20.19.0-bullseye AS frontend-builder
-WORKDIR /app
-COPY frontend/package*.json ./
+FROM node:20.19.0-bullseye as frontend
+WORKDIR /app/frontend
+COPY ./frontend/package*.json .
 RUN npm ci
-COPY frontend/ ./
-ARG VITE_API_BASE_URL=""
-ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+COPY ./frontend .
 RUN npm run build
 
-# Stage 3: Final image with nginx + backend
 FROM python:3.11-slim
-RUN apt-get update && apt-get install -y nginx && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y nginx curl && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
 
 # Copy backend
-WORKDIR /app
-COPY backend/requirements.txt .
+COPY ./backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
-COPY --from=backend-builder /app/backend ./backend/
 
-# Copy frontend build to nginx
-COPY --from=frontend-builder /app/dist /usr/share/nginx/html
+COPY --from=backend /app/backend ./backend
+COPY ./frontend ./frontend
+COPY --from=frontend /app/frontend/dist ./frontend/dist
+COPY ./nginx/nginx.conf /etc/nginx/nginx.conf
 
-# Copy nginx config
-COPY nginx/nginx.conf /etc/nginx/nginx.conf
-
-# Expose single port
 EXPOSE 80
 
-# Start both nginx and backend
-CMD ["/bin/bash", "-c", "cd /app/backend && uvicorn main:app --host 127.0.0.1 --port 8005 &  && nginx -g 'daemon off;'"]
+RUN mkdir -p /app/backend && chmod +x /app/backend
+
+CMD ["sh", "-c", "cd /app/backend && uvicorn main:app --host 127.0.0.1 --port 8005 > /tmp/backend.log 2>&1 & sleep 2 && nginx -g 'daemon off;'"]
